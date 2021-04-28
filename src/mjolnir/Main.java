@@ -83,16 +83,18 @@ public class Main {
         lblMjolnir.setBorder(new EmptyBorder(20, 0, 0, 0));
 
         // grid
+        GridBagConstraints c;
+
         JPanel pnlGrid = new JPanel(new GridBagLayout());
         pnlGrid.setPreferredSize(new Dimension(500,200));
         pnlGrid.setBackground(BACKGROUND_COLOR);
-        GridBagConstraints c;
 
         JLabel lblRepo = new JLabel("Repository");
         c = new GridBagConstraints();
         c.fill = GridBagConstraints.HORIZONTAL;
         c.gridx = 0;
         c.gridy = 0;
+        c.insets = new Insets(10,10,10,10);
         pnlGrid.add(lblRepo, c);
 
         repoList = readRepositories();
@@ -110,6 +112,7 @@ public class Main {
         c.fill = GridBagConstraints.HORIZONTAL;
         c.gridx = 0;
         c.gridy = 1;
+        c.insets = new Insets(10,10,10,10);
         pnlGrid.add(lblEnv, c);
 
         List<String> envs = readEnvs();
@@ -127,6 +130,7 @@ public class Main {
         c.fill = GridBagConstraints.HORIZONTAL;
         c.gridx = 0;
         c.gridy = 2;
+        c.insets = new Insets(10,10,10,10);
         pnlGrid.add(lblRelease, c);
 
         List<String> releases = getReleases();
