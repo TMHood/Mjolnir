@@ -1,6 +1,7 @@
 package mjolnir;
 
 import javax.swing.*;
+import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableModel;
@@ -19,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Vector;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -29,14 +31,18 @@ import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
 public class Main {
-
-    public static final String THOR_HOME = "C:\\Thor";
+    public static String THOR_HOME_ENV_VAR = "THORHOME";
+    public static String THOR_HOME = System.getenv(THOR_HOME_ENV_VAR);
     public static final String THOR_LOGS_DIR = THOR_HOME + "\\logs";
     public static final String THOR_LOGFILE_PREFIX = "thorlog_";
     public static final String THOR_LOGFILE_SUFFIX = ".log";
     public static final String THOR_LOGFILE_REGEXP = "^thorlog_.*\\.log$";
     public static final String THOR_CONNECTIONS_FILE = THOR_HOME + "\\db_connections.json";
+    public static final String THOR_REPOSITORIES_FILE = THOR_HOME + "\\repositories.json";
+    public static final Color BACKGROUND_COLOR = new Color(230,230,255);
 
+    static JFrame mainFrame;
+    static JComboBox cbRepo;
     static JComboBox cbRelease;
     static JComboBox cbEnv;
     static JTable tabLogs;
@@ -48,12 +54,18 @@ public class Main {
     static JRadioButton rbSummary;
     static JTextPane tpLogContent;
 
-    public static void main(String args[]) {
-        // JFrame
-        JFrame frame = new JFrame("Mjölnir");
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(1200, 800);
+    static List<Repository> repoList;
 
+    public static void main(String args[]) {
+        if (THOR_HOME == null || THOR_HOME.isBlank()) {
+            displayFatal("Cannot find environment variable " + THOR_HOME_ENV_VAR);
+        }
+
+        // JFrame
+        mainFrame = new JFrame("Mjölnir");
+        mainFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        mainFrame.setSize(1200, 800);
+/*
         // menu
         JMenuBar mb = new JMenuBar();
         JMenu m1 = new JMenu("FILE");
@@ -64,17 +76,40 @@ public class Main {
         JMenuItem m22 = new JMenuItem("Save as");
         m1.add(m11);
         m1.add(m22);
+*/
+        JLabel lblMjolnir = new JLabel("Mjölnir");
+        lblMjolnir.setFont(new Font("Old English Text MT", Font.BOLD, 60));
+        lblMjolnir.setAlignmentX(JLabel.CENTER_ALIGNMENT);
+        lblMjolnir.setBorder(new EmptyBorder(20, 0, 0, 0));
 
         // grid
         JPanel pnlGrid = new JPanel(new GridBagLayout());
         pnlGrid.setPreferredSize(new Dimension(500,200));
+        pnlGrid.setBackground(BACKGROUND_COLOR);
         GridBagConstraints c;
+
+        JLabel lblRepo = new JLabel("Repository");
+        c = new GridBagConstraints();
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.gridx = 0;
+        c.gridy = 0;
+        pnlGrid.add(lblRepo, c);
+
+        repoList = readRepositories();
+        Vector<String> repoNames = new Vector<String> (repoList.stream().map(x -> x.getName()).collect(Collectors.toList()));
+        repoNames.add(0,"");
+        cbRepo = new JComboBox(repoNames);
+        c = new GridBagConstraints();
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.gridx = 1;
+        c.gridy = 0;
+        pnlGrid.add(cbRepo, c);
 
         JLabel lblEnv = new JLabel("Environment");
         c = new GridBagConstraints();
         c.fill = GridBagConstraints.HORIZONTAL;
         c.gridx = 0;
-        c.gridy = 0;
+        c.gridy = 1;
         pnlGrid.add(lblEnv, c);
 
         List<String> envs = readEnvs();
@@ -84,14 +119,14 @@ public class Main {
         c = new GridBagConstraints();
         c.fill = GridBagConstraints.HORIZONTAL;
         c.gridx = 1;
-        c.gridy = 0;
+        c.gridy = 1;
         pnlGrid.add(cbEnv, c);
 
         JLabel lblRelease = new JLabel("Release");
         c = new GridBagConstraints();
         c.fill = GridBagConstraints.HORIZONTAL;
         c.gridx = 0;
-        c.gridy = 1;
+        c.gridy = 2;
         pnlGrid.add(lblRelease, c);
 
         List<String> releases = getReleases();
@@ -101,39 +136,45 @@ public class Main {
         c = new GridBagConstraints();
         c.fill = GridBagConstraints.HORIZONTAL;
         c.gridx = 1;
-        c.gridy = 1;
+        c.gridy = 2;
         pnlGrid.add(cbRelease, c);
 
         // button panel
         JPanel pnlButtons = new JPanel();
         pnlButtons.setPreferredSize(new Dimension(500,100));
+        pnlButtons.setBackground(BACKGROUND_COLOR);
 
         JButton btnFilecheck = new JButton("filecheck");
-        btnFilecheck.addActionListener(x -> runThor(cbRelease.getSelectedItem().toString(),
+        btnFilecheck.addActionListener(x -> runThor(cbRepo.getSelectedItem().toString(), cbRelease.getSelectedItem().toString(),
                 cbEnv.getSelectedItem().toString(), "filecheck"));
         pnlButtons.add(btnFilecheck);
 
         JButton btnPrecheck = new JButton("precheck");
-        btnPrecheck.addActionListener(x -> runThor(cbRelease.getSelectedItem().toString(),
+        btnPrecheck.addActionListener(x -> runThor(cbRepo.getSelectedItem().toString(), cbRelease.getSelectedItem().toString(),
                 cbEnv.getSelectedItem().toString(), "precheck"));
         pnlButtons.add(btnPrecheck);
 
         JButton btnDeploy = new JButton("deploy");
-        btnDeploy.addActionListener(x -> runThor(cbRelease.getSelectedItem().toString(),
+        btnDeploy.addActionListener(x -> runThor(cbRepo.getSelectedItem().toString(), cbRelease.getSelectedItem().toString(),
                 cbEnv.getSelectedItem().toString(), "deploy"));
         pnlButtons.add(btnDeploy);
 
         JButton btnPostcheck = new JButton("postcheck");
-        btnPostcheck.addActionListener(x -> runThor(cbRelease.getSelectedItem().toString(),
+        btnPostcheck.addActionListener(x -> runThor(cbRepo.getSelectedItem().toString(), cbRelease.getSelectedItem().toString(),
                 cbEnv.getSelectedItem().toString(), "postcheck"));
         pnlButtons.add(btnPostcheck);
 
         JButton btnRevert = new JButton("revert");
-        btnRevert.addActionListener(x -> runThor(cbRelease.getSelectedItem().toString(),
+        btnRevert.addActionListener(x -> runThor(cbRepo.getSelectedItem().toString(), cbRelease.getSelectedItem().toString(),
                 cbEnv.getSelectedItem().toString(), "revert"));
         pnlButtons.add(btnRevert);
 
         // logs table
+        JLabel lblLogs = new JLabel("Log Files");
+        lblLogs.setBorder(new EmptyBorder(0, 0, 10, 0));
+
+        lblLogs.setFont(new Font("MS Sans Serif", Font.BOLD, 20));
+        lblLogs.setAlignmentX(JLabel.CENTER_ALIGNMENT);
         tableColumns = new String[] {"Release", "Env", "Action", "Date/Time"};
         tableData = logFilesArray(cbRelease.getSelectedItem().toString(), cbEnv.getSelectedItem().toString());
         TableModel tableModel = new DefaultTableModel(tableData, tableColumns);
@@ -156,17 +197,22 @@ public class Main {
         JPanel pnlLeft = new JPanel();
         pnlLeft.setLayout(new BoxLayout(pnlLeft, BoxLayout.Y_AXIS));
         pnlLeft.setMaximumSize(new Dimension(1000,9000));
+        pnlLeft.setBackground(BACKGROUND_COLOR);
+        pnlLeft.add(lblMjolnir);
         pnlLeft.add(pnlGrid);
         pnlLeft.add(pnlButtons);
+        pnlLeft.add(lblLogs);
         pnlLeft.add(spLogs);
 
         // radio buttons
         rbFull = new JRadioButton();
         rbFull.setText("full");
+        rbFull.setBackground(BACKGROUND_COLOR);
         rbFull.setSelected(true);
         rbFull.addActionListener(event -> displayCurrentLogFile());
         rbSummary = new JRadioButton();
         rbSummary.setText("summary");
+        rbSummary.setBackground(BACKGROUND_COLOR);
         rbSummary.setSelected(false);
         rbSummary.addActionListener(event -> displayCurrentLogFile());
 
@@ -177,6 +223,7 @@ public class Main {
         // radio bar
         JPanel pnlRadio = new JPanel();
         pnlRadio.setLayout(new BoxLayout(pnlRadio, BoxLayout.X_AXIS));
+        pnlRadio.setBackground(BACKGROUND_COLOR);
         pnlRadio.add(rbFull);
         pnlRadio.add(rbSummary);
 
@@ -192,6 +239,7 @@ public class Main {
         // right panel
         JPanel pnlRight = new JPanel();
         pnlRight.setLayout(new BoxLayout(pnlRight, BoxLayout.Y_AXIS));
+        pnlRight.setBackground(BACKGROUND_COLOR);
         pnlRight.add(pnlRadio);
         pnlRight.add(spLogContent);
 
@@ -201,8 +249,8 @@ public class Main {
         pnlMain.add(pnlRight);
 
         // frame
-        frame.getContentPane().add(pnlMain);
-        frame.setVisible(true);
+        mainFrame.getContentPane().add(pnlMain);
+        mainFrame.setVisible(true);
     }
 
     public static List<String> readEnvs () {
@@ -222,10 +270,34 @@ public class Main {
             }
 
         } catch (IOException | ParseException e) {
-            e.printStackTrace();
+            displayFatal("Cannot read connections file:\n" + THOR_CONNECTIONS_FILE);
         }
 
         return envList;
+    }
+
+    public static List<Repository> readRepositories () {
+        List<Repository> repoList = new ArrayList<>();
+        try (FileReader fileReader = new FileReader(THOR_REPOSITORIES_FILE)) {
+
+            JSONParser jsonParser = new JSONParser();
+            JSONObject j = (JSONObject) jsonParser.parse(fileReader);
+
+            JSONArray repositories = (JSONArray) j.get("repositories");
+
+            Iterator<Object> iter = repositories.iterator();
+            while(iter.hasNext()){
+                JSONObject node = (JSONObject) iter.next();
+                String repo = (String) node.get("name");
+                String folder = (String) node.get("localFolder");
+                repoList.add(new Repository(repo,folder));
+            }
+
+        } catch (IOException | ParseException e) {
+            displayFatal("Cannot read repositories file:\n" + THOR_REPOSITORIES_FILE);
+        }
+
+        return repoList;
     }
 
     public static List<ThorLog> getLogFiles(String releaseFilter, String envFilter) {
@@ -276,7 +348,38 @@ public class Main {
         return thorCommand;
     }
 
-    public static void runThor (String release, String env, String action) {
+    public static void runThor (String repo, String release, String env, String action) {
+        if (repo == null || repo.isBlank()) {
+            displayError("You must select a repository.");
+            return;
+        }
+
+        if (release == null || release.isBlank()) {
+            displayError("You must select a Thor release.");
+            return;
+        }
+
+        String dir = repoPath(repo);
+        File dirFile = new File(dir);
+        if (!dirFile.exists()) {
+            displayError("Cannot find repository drectory:\n" + dir);
+            return;
+        }
+
+        if (!action.equals("filecheck")) {
+            if (env == null || env.isBlank()) {
+                displayError("You must select an environment.");
+                return;
+            }
+        }
+
+        String thorFileName = thorFile(repo, release);
+        File thorFile = new File(thorFileName);
+        if (!thorFile.exists()) {
+            displayError("Cannot find Thor file in this repository:\n" + thorFile);
+            return;
+        }
+
         try {
             boolean isWindows = System.getProperty("os.name").toLowerCase().startsWith("windows");
             ProcessBuilder builder = new ProcessBuilder();
@@ -285,7 +388,8 @@ public class Main {
             } else {
                 builder.command("sh", "-c", "ls");
             }
-            builder.directory(new File("C:\\GITesure\\tia_db"));
+
+            builder.directory(dirFile);
 
             Process process = builder.start();
             StreamGobbler streamGobbler =
@@ -293,9 +397,13 @@ public class Main {
             Executors.newSingleThreadExecutor().submit(streamGobbler);
             int exitCode = process.waitFor();
 
-            assert exitCode == 0;
+            if (exitCode != 0) {
+                // do nothing
+                System.out.println("exit code " + exitCode);
+            }
         } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
+            displayError (e.getStackTrace().toString());
+            return;
         }
 
         repopulateTable();
@@ -303,7 +411,7 @@ public class Main {
         if (tabLogs.getRowCount() > 0) {
             tabLogs.setRowSelectionInterval(0, 0);
         }
-          displayCurrentLogFile();
+        displayCurrentLogFile();
     }
 
     public static void displayCurrentLogFile () {
@@ -319,7 +427,6 @@ public class Main {
         tpLogContent.setText(null);
 
         if (fileName != null && !fileName.isBlank()) {
-            System.out.println("displaying " +fileName);
             List<String> lines = new ArrayList<>();
             try {
                 lines = Files.readAllLines(Paths.get(THOR_LOGS_DIR + "\\" + fileName));
@@ -355,7 +462,6 @@ public class Main {
                 } catch (BadLocationException e) {
                     e.printStackTrace();
                 }
-                //break;
             }
         }
     }
@@ -378,4 +484,22 @@ public class Main {
         );
     }
 
+    public static String repoPath(String name) {
+        Optional<String> path = repoList.stream().filter(x -> x.getName().equals(name)).map(x -> x.getLocalFolder()).findFirst();
+        return path.orElse(null);
+    }
+
+    public static void displayError (String message) {
+        JOptionPane.showMessageDialog (mainFrame, message,"Error", JOptionPane.ERROR_MESSAGE);
+    }
+
+    public static void displayFatal (String message) {
+        JOptionPane.showMessageDialog (mainFrame, message,"Fatal Error", JOptionPane.ERROR_MESSAGE);
+        mainFrame.dispose();
+        System.exit(1);
+    }
+
+    public static String thorFile (String repo, String release) {
+        return repoPath(repo) + "\\thor_releases\\" + release + ".json";
+    }
 }
